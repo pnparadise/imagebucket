@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>consul</title>
+  <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.21.1/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue"></script>
+
+  <style type="text/css">
+
+    body {
+      background: #f8f8f8;
+      padding: 0;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: #fff;
+      border: 1px solid #ebebeb;
+      margin-right: 1rem;
+    }
+
+    .nav {
+      border-top: none;
+      border-left: none;
+    }
+
+    .nav-item {
+      padding: 1rem;
+      font-size: 11px;
+      transition: border-left-width .15s ease-in-out,color .15s ease-in-out;
+      background: transparent;
+      box-shadow: none;
+      border: 1px solid #ebebeb;
+      border-bottom: none;
+      border-right: none;
+      border-radius: 0;
+      text-align: left;
+      color: #999;
+      cursor: pointer;
+    }
+
+    .nav-read {
+      display: flex;
+      justify-content: center;
+      padding: 1rem;
+      font-size: 11px;
+      background: transparent;
+      box-shadow: none;
+      border: 1px solid #ebebeb;
+      border-bottom: none;
+      border-right: none;
+      border-radius: 0;
+      text-align: left;
+      color: #999;
+    }
+
+    .nav-item:hover {
+      color: #000;
+      border-left: 5px solid #0aaff1;
+    }
+
+    .nav-item.active {
+      color: #000;
+      border-left: 5px solid #0aaff1;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      padding: 2rem;
+    }
+
+    .nav {
+       flex: 0 0 20em;
+    }
+
+    .console {
+       flex: 1;
+       padding: 1rem;
+    }
+
+    .console-header {
+      padding: 1rem;
+      border-bottom: 1px solid #ebebeb;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+
+    .console-body {
+      padding: 1rem;
+    }
+
+  
+    .console-btn {
+      cursor: pointer;
+      color: #999;
+    }
+
+    .console-btn:hover {
+      color: #333;
+    }
+
+    .header {
+      flex: 0 0 2rem;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      line-height: 2rem;
+    }
+
+    .main {
+      display: flex;
+      align-items: flex-start;
+    }
+
+    select {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;  
+      padding: .25rem 1rem; 
+    }
+
+    select:focus {
+      outline: none;
+    }
+
+    td {
+      overflow: hidden;
+    }
+
+  </style>
+<body>
+
+  <div id ='app' class="container">
+    <div class="header panel">
+      consul节点
+      <select v-model="host" v-on:change="refresh">
+        <option value="local">local</option>
+        <option value="dev20">dev20</option>
+        <option value="dev163">dev163</option>
+        <option value="dev220">dev220</option>
+        <option value="test210">test210</option>
+        <option value="test90">test90</option>
+        <option value="test204">test204</option>
+      </select>
+    </div>
+
+    <div class="main">
+      <div class="nav panel">
+        <div class="nav-read" v-if="instance">
+          {{host}} / {{total}}个节点 / {{instance.Member.Name}} 
+        </div>
+        <div class="nav-item" v-for="item in servers" v-on:click="selected(item)" v-bind:class="currItem.ID == item.ID ? 'active' : ''"> 
+          <div >{{ item.Service }} </div>
+        </div>
+      </div>
+      <div class="console panel">
+        <div class="console-header"  v-if="currItem.ID">
+          <div class="console-title">
+            {{currItem.Service}} (http://{{currItem.Address}}:{{currItem.Port}}) 
+          </div>
+          <div class="console-actions">
+            <div class="console-btn" v-on:click="deregister(currItem.ID)">清理</div>
+          </div>
+        </div>
+        <div class="console-body" >
+          <table>
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>类型</th>
+                <th>节点</th>
+                <th>output</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="node in currItem.Nodes">
+                <td>{{node.Status}}</td>
+                <td>{{node.Type}}</td>
+                <td>{{node.Node}}</td>
+                <td>{{node.Output}}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="console-header " v-if="!currItem.ID" >
+          consul服务面板
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+    var app = new Vue({
+      el: '#app',
+      data: {
+        host: 'local',
+        servers: [],
+        currItem: {},
+        instance: null,
+        total: 0
+      },
+      mounted: function(){
+          this.refresh()
+      },
+      methods: {
+        refresh(){
+          if(this.host){
+            this.servers = []
+            this.currItem = {}
+            this.total = 0
+            this.instance = null
+            this.services()
+            this.self()
+            this.members()
+          }
+        },
+        selected(item){
+          this.currItem = item;
+          this.healthStatus(item.Service)
+        },
+        services(){
+          axios.get(this.host + '/v1/agent/services')
+            .then( (response) => {
+              this.servers = response.data
+            })
+        },
+        members(){
+          axios.get(this.host + '/v1/agent/members')
+            .then( (response) => {
+              this.total = response.data.length
+            })
+        },
+        self(){
+          axios.get(this.host + '/v1/agent/self').then(response => {
+            this.instance = response.data
+          })
+        },
+        deregister(id){
+          axios.put(this.host + '/v1/agent/service/deregister/' + id)
+          .then( (response) => {
+            this.services()
+            this.self()
+            this.members();
+          })
+          
+        },
+        healthStatus(id){
+          axios.get(this.host + '/v1/health/checks/' + id)
+          .then( (response) => {
+            this.currItem.Nodes = response.data
+            this.$forceUpdate();
+          })
+          
+        }
+      }
+    })
+  </script>
+
+
+</body>
+</html>
